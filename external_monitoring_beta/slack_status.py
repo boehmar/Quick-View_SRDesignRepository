@@ -65,8 +65,7 @@ def get_slack_status():
             elif incident_type == "outage":
                 status = "Major Outage"
 
-            # If there is an incident but it is not a major outage
-            # mark the service as degraded
+            # If there is an incident but it is not a major outage mark the service as degraded
             else:
                 status = "Degraded"
 
@@ -82,8 +81,7 @@ def get_slack_status():
             "checked_at": datetime.now().isoformat()
         }
 
-    # Handle problems such as no internet connection,
-    # timeout errors, or failed HTTP requests
+    # Handle problems such as no internet connection, timeout errors, or failed HTTP requests
     except requests.RequestException as error:
 
         # Return an Unknown status instead of saying Slack is down
