@@ -1,17 +1,3 @@
-"""
-
-It runs the network checks, breaks the result into individual services
-(Internet by IP, DNS, Web/HTTP), also queries the external service
-monitors in ./external_monitoring (Slack, GitHub, Dropbox), judges each
-one, and gives a single verdict on whether every service is functional.
-
-Other check groups can be added with engine.register(...) - see the
-bottom of this file. Each group is isolated: if one crashes or hangs,
-it is reported as "unknown" and the others still run.
-
-Exit code: 0 = all services OK, 1 = degraded, 2 = down, 3 = unknown.
-"""
-
 import importlib
 import json
 import os
@@ -21,14 +7,11 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass, field, asdict
 from typing import Callable
 
-import network_monitoring  # the script you provided
+import network_monitoring
 
-# Severity order: higher is worse. "unknown" sits between degraded and down
-# so that a check we couldn't run is never mistaken for a healthy one.
 SEVERITY = {"ok": 0, "degraded": 1, "down": 2, "unknown": 3}
 EXIT_CODES = {"ok": 0, "degraded": 1, "down": 2, "unknown": 3}
 LABELS = {"ok": "[ OK ]", "degraded": "[ !! ]", "down": "[FAIL]", "unknown": "[ ?? ]"}
-
 
 @dataclass
 class ServiceResult:
@@ -45,20 +28,14 @@ class Report:
     all_functional: bool
     summary: str
     services: list
-    diagnosis: str = ""              # check_network's own root-cause summary
+    diagnosis: str = ""
     total_ms: int = 0
-
-
-# --------------------------------------------------------------------------
-# Adapters: turn network_check's raw output into per-service verdicts
-# --------------------------------------------------------------------------
 
 def _ratio_state(results: list) -> str:
     passed = sum(1 for r in results if r["ok"])
     if passed == len(results):
         return "ok"
     return "down" if passed == 0 else "degraded"
-
 
 def judge_internet(details: dict) -> ServiceResult:
     results = details["internet_by_ip"]
@@ -70,7 +47,6 @@ def judge_internet(details: dict) -> ServiceResult:
         {"tests": results},
     )
 
-
 def judge_dns(details: dict) -> ServiceResult:
     results = details["dns"]
     passed = sum(1 for r in results if r["ok"])
@@ -80,7 +56,6 @@ def judge_dns(details: dict) -> ServiceResult:
         f"{passed}/{len(results)} hostnames resolved",
         {"tests": results},
     )
-
 
 def judge_http(details: dict) -> ServiceResult:
     h = details["http"]
@@ -95,23 +70,14 @@ def judge_http(details: dict) -> ServiceResult:
     return ServiceResult("Web access (HTTP)", "ok",
                          f"Test page loaded in {h['ms']} ms", {"test": h})
 
-
 def run_network_group() -> tuple[list, str]:
-    """Run network_check once and split it into three services."""
     raw = network_monitoring.check_network()
     d = raw["details"]
     services = [judge_internet(d), judge_dns(d), judge_http(d)]
     return services, d["summary"]
 
-
-# --------------------------------------------------------------------------
-# External service monitors (./external_monitoring)
-# --------------------------------------------------------------------------
-
 EXTERNAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "external_monitoring")
 
-# label -> (module, function). Same functions check_all_services() calls, but
-# each is run as its own check so one failing API can't hide the others.
 EXTERNAL_SERVICES = {
     "Slack":   ("slack_status",   "get_slack_status"),
     "GitHub":  ("github_status",  "get_github_status"),
@@ -122,15 +88,12 @@ _STATUS_KEYS = ("status", "state", "indicator", "health")
 _NAME_KEYS = ("service", "name", "service_name")
 _MESSAGE_KEYS = ("message", "description", "summary", "status_description", "details", "error")
 
-
 def _as_dict(obj) -> dict:
-    """ServiceResult -> dict, preferring its own to_dict()."""
     if isinstance(obj, dict):
         return obj
     if hasattr(obj, "to_dict"):
         return obj.to_dict()
     return dict(vars(obj)) if hasattr(obj, "__dict__") else {"status": obj}
-
 
 def _first(data: dict, keys: tuple):
     for k in keys:
@@ -138,9 +101,7 @@ def _first(data: dict, keys: tuple):
             return data[k]
     return None
 
-
 def normalize_status(raw) -> str:
-    """Map whatever status vocabulary the monitors use onto ok/degraded/down/unknown."""
     if isinstance(raw, bool):
         return "ok" if raw else "down"
     if isinstance(raw, dict):  # e.g. Statuspage: {"indicator": "none", "description": "..."}
@@ -150,7 +111,6 @@ def normalize_status(raw) -> str:
     text = str(getattr(raw, "value", raw)).strip().lower().replace("_", " ").replace("-", " ")
     if text in ("none", "ok", "up", "online", "healthy", "good", "available", "resolved"):
         return "ok"
-    # Check the bad words before "operational" so "not operational" isn't read as ok
     if any(w in text for w in ("major", "critical", "outage", "down", "offline", "fail", "error",
                                "unavailable", "not operational")):
         return "degraded" if "partial" in text else "down"
@@ -161,11 +121,8 @@ def normalize_status(raw) -> str:
         return "ok"
     return "unknown"
 
-
 def make_external_check(label: str, module_name: str, func_name: str):
     def run():
-        # Imported here (not at the top) so a missing/broken monitor is caught
-        # by the engine and reported as "unknown" instead of crashing it.
         if EXTERNAL_DIR not in sys.path:
             sys.path.insert(0, EXTERNAL_DIR)
         func = getattr(importlib.import_module(module_name), func_name)
@@ -202,21 +159,14 @@ def make_external_check(label: str, module_name: str, func_name: str):
         return [ServiceResult(label, state, " | ".join(parts), {"raw": data})], ""
     return run
 
-
-# --------------------------------------------------------------------------
-# Engine
-# --------------------------------------------------------------------------
-
 class DiagnosticEngine:
     def __init__(self):
-        # name -> (function returning (list[ServiceResult], diagnosis_text), timeout seconds)
         self._groups: dict[str, tuple[Callable, int]] = {}
 
     def register(self, name: str, func: Callable, timeout: int = 60) -> None:
         self._groups[name] = (func, timeout)
 
     def _run_group(self, name: str, func: Callable, timeout: int):
-        """Run one group with a timeout; never let it crash the engine."""
         start = time.perf_counter()
         pool = ThreadPoolExecutor(max_workers=1)
         future = pool.submit(func)
@@ -247,7 +197,6 @@ class DiagnosticEngine:
                 if diagnosis:
                     diagnoses.append(diagnosis)
 
-        # Overall verdict = the worst individual service state.
         overall = max((s.state for s in all_services), key=lambda s: SEVERITY[s], default="unknown")
         failing = [s for s in all_services if s.state != "ok"]
 
@@ -267,11 +216,6 @@ class DiagnosticEngine:
             diagnosis=" ".join(diagnoses),
             total_ms=int((time.perf_counter() - start) * 1000),
         )
-
-
-# --------------------------------------------------------------------------
-# Output
-# --------------------------------------------------------------------------
 
 def format_report(report: Report) -> str:
     bar = "=" * 62
@@ -294,14 +238,11 @@ def format_report(report: Report) -> str:
     lines += ["", f"  Completed in {report.total_ms} ms", bar]
     return "\n".join(lines)
 
-
 def main() -> int:
     engine = DiagnosticEngine()
     engine.register("network", run_network_group, timeout=60)
     for label, (module_name, func_name) in EXTERNAL_SERVICES.items():
         engine.register(label, make_external_check(label, module_name, func_name), timeout=30)
-    # Add more groups here, e.g.:
-    # engine.register("disk", run_disk_group)   # must return (list[ServiceResult], diagnosis_str)
 
     report = engine.run()
 
@@ -310,7 +251,6 @@ def main() -> int:
     else:
         print(format_report(report))
     return EXIT_CODES[report.overall_state]
-
 
 if __name__ == "__main__":
     sys.exit(main())
