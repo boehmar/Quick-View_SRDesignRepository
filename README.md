@@ -10,3 +10,5 @@ Ex. 9/28/26 2:13pm - Alex added a brief description to the ReadME.MD file explai
 10/26/26 4:00pm - Alec committed official working verison of external monitoring feature. Use external_monitor.py for diagnostic engine connection. Beta external monitoring folder deleted from main branch for clarity.
 
 10/26/26 - Andrew completed and uploaded the network monitoring script
+
+11/9/26 4:00pm - Alec committed the first work in progress version of scripts for the internal service monitoring feature.
