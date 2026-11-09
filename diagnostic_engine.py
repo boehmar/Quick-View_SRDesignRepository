@@ -1,5 +1,4 @@
 """
-Diagnostic engine built on top of network_check.py.
 
 It runs the network checks, breaks the result into individual services
 (Internet by IP, DNS, Web/HTTP), also queries the external service
@@ -9,11 +8,6 @@ one, and gives a single verdict on whether every service is functional.
 Other check groups can be added with engine.register(...) - see the
 bottom of this file. Each group is isolated: if one crashes or hangs,
 it is reported as "unknown" and the others still run.
-
-Uses only the standard library. network_check.py must be in the same folder.
-
-Run:  python diagnostic_engine.py            (plain-language report)
-      python diagnostic_engine.py --json     (raw data for other programs)
 
 Exit code: 0 = all services OK, 1 = degraded, 2 = down, 3 = unknown.
 """
@@ -27,11 +21,11 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass, field, asdict
 from typing import Callable
 
-import network_check  # the script you provided
+import network_monitoring  # the script you provided
 
 # Severity order: higher is worse. "unknown" sits between degraded and down
 # so that a check we couldn't run is never mistaken for a healthy one.
-SEVERITY = {"ok": 0, "degraded": 1, "unknown": 2, "down": 3}
+SEVERITY = {"ok": 0, "degraded": 1, "down": 2, "unknown": 3}
 EXIT_CODES = {"ok": 0, "degraded": 1, "down": 2, "unknown": 3}
 LABELS = {"ok": "[ OK ]", "degraded": "[ !! ]", "down": "[FAIL]", "unknown": "[ ?? ]"}
 
@@ -92,7 +86,7 @@ def judge_http(details: dict) -> ServiceResult:
     h = details["http"]
     if not h["ok"]:
         return ServiceResult("Web access (HTTP)", "down",
-                             f"Test page did not load: {network_check.friendly_error(h['error'])}",
+                             f"Test page did not load: {network_monitoring.friendly_error(h['error'])}",
                              {"test": h})
     if not h.get("expected_content"):
         return ServiceResult("Web access (HTTP)", "degraded",
@@ -104,7 +98,7 @@ def judge_http(details: dict) -> ServiceResult:
 
 def run_network_group() -> tuple[list, str]:
     """Run network_check once and split it into three services."""
-    raw = network_check.check_network()
+    raw = network_monitoring.check_network()
     d = raw["details"]
     services = [judge_internet(d), judge_dns(d), judge_http(d)]
     return services, d["summary"]
@@ -296,7 +290,7 @@ def format_report(report: Report) -> str:
         for t in s.details.get("tests", []):
             if not t["ok"]:
                 target = t.get("target") or t.get("name")
-                lines.append(f"              - {target}: {network_check.friendly_error(t['error'])}")
+                lines.append(f"              - {target}: {network_monitoring.friendly_error(t['error'])}")
     lines += ["", f"  Completed in {report.total_ms} ms", bar]
     return "\n".join(lines)
 
