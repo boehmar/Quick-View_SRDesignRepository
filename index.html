@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuickView</title>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background-color: #f4f6f9;
+      color: #222;
+      margin: 0;
+      padding: 30px;
+    }
+
+    .container {
+      max-width: 850px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background-color: #ffffff;
+      padding: 20px 25px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+      color: #1e3a8a;
+    }
+
+    .header p {
+      margin: 4px 0 0 0;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .controls {
+      text-align: right;
+    }
+
+    .btn {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background-color: #1d4ed8;
+    }
+
+    .time-text {
+      display: block;
+      font-size: 12px;
+      color: #777;
+      margin-top: 6px;
+    }
+
+    .summary-bar {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .summary-box {
+      flex: 1;
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    .summary-box h3 {
+      margin: 0;
+      font-size: 13px;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    .summary-box p {
+      margin: 8px 0 0 0;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 650px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background-color: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+
+    .card-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status-green {
+      background-color: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-yellow {
+      background-color: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-red {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-gray {
+      background-color: #e5e7eb;
+      color: #374151;
+    }
+
+    .desc {
+      font-size: 14px;
+      color: #444;
+      line-height: 1.4;
+      margin: 0 0 15px 0;
+    }
+
+    .affected-list {
+      background-color: #fff5f5;
+      border-left: 3px solid #dc2626;
+      padding: 8px 12px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+
+    .affected-list ul {
+      margin: 5px 0 0 18px;
+      padding: 0;
+    }
+
+    .card-footer {
+      font-size: 12px;
+      color: #777;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+
+    .error-msg {
+      background-color: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 6px;
+      border: 1px solid #f87171;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function Dashboard() {
+      const [services, setServices] = React.useState([]);
+      const [lastChecked, setLastChecked] = React.useState("");
+      const [loading, setLoading] = React.useState(true);
+      const [error, setError] = React.useState("");
+
+      const loadData = () => {
+        setLoading(true);
+        fetch("http://127.0.0.1:5000/api/status")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("Backend server returned an error.");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            setServices(data.services);
+            setLastChecked(data.last_checked);
+            setError("");
+            setLoading(false);
+          })
+          .catch((err) => {
+            setError("Cannot connect to backend.py. Make sure the Python server is running.");
+            setLoading(false);
+          });
+      };
+
+      React.useEffect(() => {
+        loadData();
+      }, []);
+
+      const getStatusColor = (status) => {
+        const s = status.toLowerCase();
+        if (s.includes("operational")) return "status-green";
+        if (s.includes("degraded") || s.includes("maintenance")) return "status-yellow";
+        if (s.includes("outage")) return "status-red";
+        return "status-gray";
+      };
+
+      const healthyCount = services.filter((s) =>
+        s.status.toLowerCase().includes("operational")
+      ).length;
+
+      return (
+        <div className="container">
+          <div className="header">
+            <div>
+              <h1>QuickView Dashboard</h1>
+              <p>Service Status & Local Network Monitor</p>
+            </div>
+            <div className="controls">
+              <button className="btn" onClick={loadData}>
+                {loading ? "Checking..." : "Refresh Status"}
+              </button>
+              {lastChecked && <span className="time-text">Last updated: {lastChecked}</span>}
+            </div>
+          </div>
+
+          {error && <div className="error-msg">{error}</div>}
+
+          <div className="summary-bar">
+            <div className="summary-box">
+              <h3>Services Monitored</h3>
+              <p>{services.length}</p>
+            </div>
+            <div className="summary-box">
+              <h3>Healthy Systems</h3>
+              <p style={{ color: "#059669" }}>{healthyCount} / {services.length}</p>
+            </div>
+          </div>
+
+          <div className="grid">
+            {services.map((item, idx) => (
+              <div className="card" key={idx}>
+                <div>
+                  <div className="card-header">
+                    <h2>{item.service_name}</h2>
+                    <span className={`badge ${getStatusColor(item.status)}`}>
+                      {item.status}
+                    </span>
+                  </div>
+
+                  <p className="desc">{item.description}</p>
+
+                  {item.affected && item.affected.length > 0 && (
+                    <div className="affected-list">
+                      <strong>Flagged Items:</strong>
+                      <ul>
+                        {item.affected.map((comp, i) => (
+                          <li key={i}>{comp}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="card-footer">
+                  <span>Response Time: {item.latency !== null ? `${item.latency} ms` : "N/A"}</span>
+                  <span>{item.online ? "Connected" : "Offline"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<Dashboard />);
+  </script>
+</body>
+</html>
