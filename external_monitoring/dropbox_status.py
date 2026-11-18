@@ -1,4 +1,6 @@
-import requests
+import json
+import urllib.error
+import urllib.request
 from datetime import datetime
 
 # Import the standard result format used by all external services
@@ -13,13 +15,9 @@ DROPBOX_STATUS_URL = "https://status.dropbox.com/api/v2/summary.json"
 def get_dropbox_status():
     try:
         # Send a request to the service status API
-        response = requests.get(DROPBOX_STATUS_URL, timeout=10)
-
-        # Raise an error if the service returns a bad HTTP status code
-        response.raise_for_status()
-
-        # Convert the JSON response into a Python dictionary
-        data = response.json()
+        with urllib.request.urlopen(DROPBOX_STATUS_URL, timeout=10) as response:
+            # Convert the JSON response into a Python dictionary
+            data = json.loads(response.read().decode("utf-8"))
 
         # Get the overall service status information
         status_data = data.get("status", {})
@@ -86,7 +84,7 @@ def get_dropbox_status():
         )
 
     # Handle connection problems, timeouts, and failed HTTP requests
-    except requests.RequestException as error:
+    except (urllib.error.URLError, TimeoutError) as error:
 
         # Return Unknown instead of assuming the service is down
         return ServiceResult(
